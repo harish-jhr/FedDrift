@@ -1,0 +1,6 @@
+# torch and torchvision are not listed. install the build for your GPU first
+# pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+# Im using: torch 2.11.0+cu128, torchvision 0.26.0, diffusers 0.40.0, numpy 2.2.6, matplotlib 3.11.2
+diffusers>=0.40.0
+numpy>=2.0
+matplotlib>=3.9
