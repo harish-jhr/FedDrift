@@ -5,7 +5,7 @@ from data import random_flip
 from diffusion import ddpm_loss
 
 
-def local_train(model, x_all, idx, sched, epochs, batch_size, lr, grad_clip=1.0):
+def local_train(model, x_all, idx, sched, epochs, batch_size, lr, grad_clip=1.0, max_steps=None):
     #client's local training, x_all is the full dataset on device,idx this client's indices
     device = x_all.device
     use_amp = device.type == "cuda"
@@ -17,6 +17,8 @@ def local_train(model, x_all, idx, sched, epochs, batch_size, lr, grad_clip=1.0)
     for _ in range(epochs):
         perm = idx[torch.randperm(len(idx), device=device)]
         for i in range(0, len(perm), batch_size):
+            if max_steps is not None and steps >= max_steps:
+                break
             x0 = random_flip(x_all[perm[i:i + batch_size]])
             t = torch.randint(0, sched.T, (x0.shape[0],), device=device)
             eps = torch.randn_like(x0)
@@ -37,12 +39,17 @@ def local_train(model, x_all, idx, sched, epochs, batch_size, lr, grad_clip=1.0)
 
 def fedavg(states, sizes):
     #average client weights, weighted by how much data each client has
+    # states are expected to be CPU tensors. Keep aggregation on CPU so
+    # client models do not accumulate in MPS/unified memory.
     w = torch.tensor(sizes, dtype=torch.float64)
     w = w / w.sum()
     avg = {}
     for k, v in states[0].items():
         if v.is_floating_point():
-            avg[k] = sum(wi.item() * s[k] for wi, s in zip(w, states))
+            out = torch.zeros_like(v, device="cpu")
+            for wi, s in zip(w, states):
+                out.add_(s[k], alpha=wi.item())
+            avg[k] = out
         else:
             avg[k] = v.clone()
     return avg
