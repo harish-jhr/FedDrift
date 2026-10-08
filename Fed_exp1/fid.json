@@ -1,0 +1,51 @@
+{
+ "config": {
+  "alpha": "iid",
+  "seed": 0,
+  "n_clients": 10,
+  "rounds": 5,
+  "local_epochs": 1,
+  "batch_size": 16,
+  "lr": 0.0002,
+  "model": "tiny",
+  "fid_samples": 5000,
+  "sample_batch": 8,
+  "eval_rounds": [
+   0,
+   5
+  ],
+  "eval_seed": 1234,
+  "ref_split": "train",
+  "amp_sampling": false,
+  "partition_file": "./partitions/cifar10_K10_iid_seed0.json",
+  "sampler": "ddpm ancestral, T=1000, sigma^2=beta, no EMA",
+  "fid_impl": "pytorch-fid InceptionV3 (FID weights, pool3 2048-d), own Frechet distance",
+  "versions": {
+   "torch": "2.14.1",
+   "pytorch_fid": "skipped"
+  },
+  "skip_fid": true,
+  "max_steps_per_client": null
+ },
+ "client_sizes": [
+  5000,
+  5000,
+  5000,
+  5000,
+  5000,
+  5000,
+  5000,
+  5000,
+  5000,
+  5000
+ ],
+ "train_loss": {
+  "1": 0.16034787406210604,
+  "2": 0.06127903378976229,
+  "3": 0.050632569178070026,
+  "4": 0.0464626356486243,
+  "5": 0.04480120623186706
+ },
+ "fid": {},
+ "eval": {}
+}
