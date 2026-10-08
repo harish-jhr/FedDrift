@@ -4,3 +4,4 @@
 diffusers>=0.40.0
 numpy>=2.0
 matplotlib>=3.9
+pytorch-fid>=0.3.0   # Inception weights are downloaded on first use; only needed for train_fid.py
