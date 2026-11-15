@@ -1,0 +1,8 @@
+__pycache__/
+data/
+runs/
+logs/
+*.pt
+*.log
+fid.txt
+.env

@@ -1,0 +1,72 @@
+# Optional: run several experiments in parallel on a Kubernetes GPU cluster with SkyPilot.
+# Each entry in JOBS is "<script>:<seed>[:<dataset>[:<objective>]]" and gets its own GPU.
+#
+#   sky launch scripts/skypilot.yaml -c feddrift --env-file .env --down -y -d \
+#     --env "JOBS=fedavg.sh:0 regmean.sh:0 fedavg.sh:0:cifar10:fm regmean.sh:0:cifar10:fm"
+#   sky logs feddrift
+#   sky down feddrift
+#
+# .env (not committed) holds WANDB_API_KEY; without it wandb logs offline.
+# OUT_ROOT is a persistent mount, so checkpoints survive `sky down`; change it for your cluster.
+
+name: feddrift
+
+resources:
+  image_id: pytorch/pytorch:2.13.0-cuda12.6-cudnn9-devel
+  accelerators: H200:2
+  cpus: 8+
+  memory: 32+
+  cloud: kubernetes
+  autostop:
+    idle_minutes: 10
+    down: true
+
+workdir: .
+
+envs:
+  JOBS: "fedavg.sh:0 regmean.sh:0"
+  OUT_ROOT: /mnt/data/feddrift
+  ALPHA: ""
+  WANDB_API_KEY: ""
+
+setup: |
+  set -euo pipefail
+  cd ~/sky_workdir
+  uv pip install --system --break-system-packages -r requirements.txt
+
+run: |
+  set -euo pipefail
+  cd ~/sky_workdir
+  uv pip install --system --break-system-packages -q -r requirements.txt
+
+  mkdir -p "$OUT_ROOT"/{runs,logs,data}
+  for d in runs logs data; do
+    if [ -d "$d" ] && [ ! -L "$d" ]; then cp -rn "$d"/. "$OUT_ROOT/$d"/; rm -rf "$d"; fi
+    ln -sfn "$OUT_ROOT/$d" "$d"
+  done
+  touch "$OUT_ROOT/fid.txt"; ln -sf "$OUT_ROOT/fid.txt" fid.txt
+
+  export WANDB_DIR="$OUT_ROOT"; mkdir -p "$OUT_ROOT/wandb"
+  if [ -z "${WANDB_API_KEY:-}" ]; then export WANDB_MODE=offline; fi
+  [ -n "$ALPHA" ] && export ALPHA || unset ALPHA
+
+  # download each dataset once before the jobs that need it start
+  for d in $(for j in $JOBS; do IFS=: read -r _ _ d _ <<< "$j"; echo "${d:-cifar10}"; done | sort -u); do
+    python -c "from data import load_dataset; load_dataset('$d', './data'); load_dataset('$d', './data', train=False)" > "logs/sky_prefetch_$d.log" 2>&1
+  done
+
+  NGPU=${SKYPILOT_NUM_GPUS_PER_NODE:-1}
+  i=0
+  for job in $JOBS; do
+    IFS=: read -r script seed dataset objective <<< "$job"
+    dataset=${dataset:-cifar10}; objective=${objective:-ddpm}
+    log="logs/sky_${script%.sh}_${dataset}_${objective}_s$seed.log"
+    echo "[job] GPU $((i % NGPU)): $dataset/$objective scripts/$script $seed"
+    DATASET=$dataset OBJECTIVE=$objective CUDA_VISIBLE_DEVICES=$((i % NGPU)) bash "scripts/$script" "$seed" > "$log" 2>&1 &
+    i=$((i + 1))
+  done
+
+  fail=0
+  for pid in $(jobs -p); do wait "$pid" || fail=1; done
+  echo "results in $OUT_ROOT (runs/, logs/, fid.txt)"
+  exit $fail
